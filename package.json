@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "node-fetch": "^3.1.0"
+    "node-fetch": "^3.1.0",
+    "write-excel-file": "^1.4.15"
   }
 }

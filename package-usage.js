@@ -1,10 +1,11 @@
 import fetch from "node-fetch";
+import writeXlsxFile from "write-excel-file";
 
 const companyName = process.argv[2];
 const packageName = process.argv[3];
 const azureToken = process.argv[4];
 
-const token = `Basic ${Buffer.from(`:${azureToken}`).toString('base64')}`;
+const token = `Basic ${Buffer.from(`:${azureToken}`).toString("base64")}`;
 
 const API_URL = `https://almsearch.dev.azure.com/${companyName}/_apis/search/codeQueryResults?api-version=6.0-preview.1`;
 
@@ -27,6 +28,36 @@ const API_URL = `https://almsearch.dev.azure.com/${companyName}/_apis/search/cod
 //   const responseJson = await response.json();
 //   return responseJson;
 // };
+
+const getFileContent = async (file) => {
+  const response = await fetch(
+    `https://dev.azure.com/${companyName}/${
+      file.projectId
+    }/_apis/git/repositories/${file.repositoryId}/Items?path=${encodeURI(
+      file.path
+    )}&recursionLevel=0&includeContentMetadata=true&latestProcessedChange=false&download=false&versionDescriptor%5BversionOptions%5D=0&versionDescriptor%5BversionType%5D=2&versionDescriptor%5Bversion%5D=${
+      file.changeId
+    }&includeContent=true&resolveLfs=true`,
+    {
+      method: "GET",
+      headers: { Authorization: token, "Content-Type": "application/json" },
+    }
+  );
+  return await response.text();
+};
+
+const findPackageVersion = async (file, packageName) => {
+  const content = await getFileContent(file);
+  const obj = JSON.parse(content);
+  var version;
+  if (obj.devDependencies) {
+    version = obj.devDependencies[`@itwin/${packageName}`];
+  }
+  if (obj.dependencies) {
+    version = obj.dependencies[`@itwin/${packageName}`];
+  }
+  return version;
+};
 
 const search = async (packageName, skip, projectName, repositoryName) => {
   const filter = {};
@@ -59,29 +90,54 @@ const getUsageForPackage = async (packageName) => {
   const initialResponse = await search(packageName, 0);
   const totalCount = initialResponse.results.count;
   let resultsProcessed = 0;
-  const projects = initialResponse.filterCategories[0].filters.map((filter) => filter.id);
-  const projectResults = initialResponse.filterCategories[0].filters.map((filter) => filter.resultCount);
+  const projects = initialResponse.filterCategories[0].filters.map(
+    (filter) => filter.id
+  );
+  const projectResults = initialResponse.filterCategories[0].filters.map(
+    (filter) => filter.resultCount
+  );
   const appsUsing = [];
+  const fileContents = [];
   for (let i = 0; i < projects.length; i++) {
     const projectName = projects[i];
     const initialProjectResponse = await search(packageName, 0, projectName);
-    const repositories = initialProjectResponse.filterCategories[1].filters.map((filter) => filter.id);
-    const repositoriesResults = initialProjectResponse.filterCategories[1].filters.map((filter) => filter.resultCount);
+    const repositories = initialProjectResponse.filterCategories[1].filters.map(
+      (filter) => filter.id
+    );
+    const repositoriesResults =
+      initialProjectResponse.filterCategories[1].filters.map(
+        (filter) => filter.resultCount
+      );
     for (let j = 0; j < repositories.length; j++) {
       const repositoryName = repositories[j];
       let skip = 0;
       while (skip < repositoriesResults[j]) {
-        const response = await search(packageName, skip, projectName, repositoryName);
+        const response = await search(
+          packageName,
+          skip,
+          projectName,
+          repositoryName
+        );
         appsUsing.push(
           ...response.results.values
             .filter((val) => {
               return val.fileName === "package.json";
             })
-            .map((val) => val.repository)
+            .map((val) => {
+              // return val.repository;
+              findPackageVersion(val, packageName).then((version) => {
+                return {
+                  name: val.repository,
+                  version: version,
+                };
+              });
+            })
         );
         skip = response.results.values.length + skip;
         resultsProcessed += response.results.values.length;
-        process.stdout.write(`\r${packageName}: ${resultsProcessed} out of ${totalCount} files scanned.`);
+        process.stdout.write(
+          `\r${packageName}: ${resultsProcessed} out of ${totalCount} files scanned.`
+        );
       }
     }
   }
@@ -89,11 +145,42 @@ const getUsageForPackage = async (packageName) => {
   return new Set(appsUsing);
 };
 
+const writeExcelFile = async (data) => {
+  const schema = [
+    {
+      column: "Date",
+      type: Date,
+      value: Date.UTC(),
+    },
+    {
+      column: "Repository",
+      type: String,
+      format: "mm/dd/yyyy",
+      value: (item) => item.name,
+    },
+    {
+      column: "Version",
+      type: String,
+      value: (item) => item.version,
+    },
+  ];
+
+  await writeXlsxFile(data, {
+    schema,
+    fileName: "file.xlsx",
+  });
+};
+
 const main = async () => {
   try {
-    console.log(packageName, await getUsageForPackage(packageName));
+    const data = await getUsageForPackage(packageName);
+    await writeExcelFile(data);
+    console.log(data);
   } catch (error) {
-    console.error("Something went wrong. It might be that your token expired.", error);
+    console.error(
+      "Something went wrong. It might be that your token expired.",
+      error
+    );
   }
 };
 
