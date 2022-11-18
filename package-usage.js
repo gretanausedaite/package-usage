@@ -1,5 +1,6 @@
 import fetch from "node-fetch";
 import writeXlsxFile from "write-excel-file";
+import fs from "fs";
 
 const companyName = process.argv[2];
 const packageName = process.argv[3];
@@ -29,6 +30,16 @@ const API_URL = `https://almsearch.dev.azure.com/${companyName}/_apis/search/cod
 //   return responseJson;
 // };
 
+const packages = [
+  "@itwin/itwinui-css",
+  "@itwin/itwinui-react",
+  "@itwin/itwinui-layouts-css",
+  "@itwin/itwinui-layouts-react",
+  "@itwin/itwinui-variables",
+  "@itwin/itwinui-icons-react",
+  "@itwin/itwinui-illustrations-react",
+];
+
 const getFileContent = async (file) => {
   const response = await fetch(
     `https://dev.azure.com/${companyName}/${
@@ -50,11 +61,15 @@ const findPackageVersion = async (file, packageName) => {
   const content = await getFileContent(file);
   const obj = JSON.parse(content);
   var version;
-  if (obj.devDependencies) {
-    version = obj.devDependencies[`@itwin/${packageName}`];
-  }
-  if (obj.dependencies) {
-    version = obj.dependencies[`@itwin/${packageName}`];
+  try {
+    if (obj.devDependencies) {
+      version = obj.devDependencies[packageName];
+    }
+    if (obj.dependencies) {
+      version = obj.dependencies[packageName];
+    }
+  } catch (err) {
+    console.log(err);
   }
   return version;
 };
@@ -86,6 +101,20 @@ const search = async (packageName, skip, projectName, repositoryName) => {
   return responseJson;
 };
 
+const proccessData = (data) => {
+  const versionUsage = [];
+  data.map((item) => {
+    if (item.package === "@itwin/itwinui-react") {
+      if (versionUsage[item.version]) {
+        versionUsage[item.version]++;
+      } else {
+        versionUsage[item.version] = 1;
+      }
+    }
+  });
+  console.log(versionUsage);
+};
+
 const getUsageForPackage = async (packageName) => {
   const initialResponse = await search(packageName, 0);
   const totalCount = initialResponse.results.count;
@@ -97,52 +126,66 @@ const getUsageForPackage = async (packageName) => {
     (filter) => filter.resultCount
   );
   const appsUsing = [];
-  const fileContents = [];
+
   for (let i = 0; i < projects.length; i++) {
-    const projectName = projects[i];
-    const initialProjectResponse = await search(packageName, 0, projectName);
-    const repositories = initialProjectResponse.filterCategories[1].filters.map(
-      (filter) => filter.id
-    );
-    const repositoriesResults =
-      initialProjectResponse.filterCategories[1].filters.map(
-        (filter) => filter.resultCount
-      );
-    for (let j = 0; j < repositories.length; j++) {
-      const repositoryName = repositories[j];
-      let skip = 0;
-      while (skip < repositoriesResults[j]) {
-        const response = await search(
-          packageName,
-          skip,
-          projectName,
-          repositoryName
+    try {
+      const projectName = projects[i];
+      const initialProjectResponse = await search(packageName, 0, projectName);
+      const repositories =
+        initialProjectResponse.filterCategories[1].filters.map(
+          (filter) => filter.id
         );
-        appsUsing.push(
-          ...response.results.values
+      const repositoriesResults =
+        initialProjectResponse.filterCategories[1].filters.map(
+          (filter) => filter.resultCount
+        );
+      for (let j = 0; j < repositories.length; j++) {
+        const repositoryName = repositories[j];
+        let skip = 0;
+        while (skip < repositoriesResults[j]) {
+          const response = await search(
+            packageName,
+            skip,
+            projectName,
+            repositoryName
+          );
+
+          response.results.values
             .filter((val) => {
               return val.fileName === "package.json";
             })
-            .map((val) => {
+            .map(async (val) => {
               // return val.repository;
-              findPackageVersion(val, packageName).then((version) => {
-                return {
-                  name: val.repository,
-                  version: version,
-                };
+              packages.map(async (pkg) => {
+                await findPackageVersion(val, pkg).then((version) => {
+                  appsUsing.push({
+                    name: val.repository,
+                    version: version,
+                    package: pkg,
+                  });
+                });
               });
-            })
-        );
-        skip = response.results.values.length + skip;
-        resultsProcessed += response.results.values.length;
-        process.stdout.write(
-          `\r${packageName}: ${resultsProcessed} out of ${totalCount} files scanned.`
-        );
+            });
+
+          skip = response.results.values.length + skip;
+          resultsProcessed += response.results.values.length;
+          process.stdout.write(
+            `\r${packageName}: ${resultsProcessed} out of ${totalCount} files scanned.`
+          );
+        }
       }
+    } catch (err) {
+      console.log(err);
     }
   }
   process.stdout.write(`\n`);
-  return new Set(appsUsing);
+  console.log(appsUsing);
+  proccessData(appsUsing);
+  fs.writeFileSync(
+    `./packageusage-${packageName}.json`,
+    JSON.stringify(appsUsing)
+  );
+  // await writeExcelFile(appsUsing);
 };
 
 const writeExcelFile = async (data) => {
@@ -150,7 +193,7 @@ const writeExcelFile = async (data) => {
     {
       column: "Date",
       type: Date,
-      value: Date.UTC(),
+      value: new Date(),
     },
     {
       column: "Repository",
@@ -173,9 +216,7 @@ const writeExcelFile = async (data) => {
 
 const main = async () => {
   try {
-    const data = await getUsageForPackage(packageName);
-    await writeExcelFile(data);
-    console.log(data);
+    await getUsageForPackage(packageName);
   } catch (error) {
     console.error(
       "Something went wrong. It might be that your token expired.",
