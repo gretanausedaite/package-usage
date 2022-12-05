@@ -1,12 +1,15 @@
 import fetch from "node-fetch";
+import fs from "fs";
 
 const companyName = process.argv[2];
 const packageName = process.argv[3];
 const azureToken = process.argv[4];
 
-const token = `Basic ${Buffer.from(`:${azureToken}`).toString('base64')}`;
+const token = `Basic ${Buffer.from(`:${azureToken}`).toString("base64")}`;
 
 const API_URL = `https://almsearch.dev.azure.com/${companyName}/_apis/search/codeQueryResults?api-version=6.0-preview.1`;
+
+const today = new Date().toJSON().slice(0, 10);
 
 // const search = async (packageName, skip, projectName) => {
 //   const response = await fetch(API_URL, {
@@ -59,19 +62,33 @@ const getUsageForPackage = async (packageName) => {
   const initialResponse = await search(packageName, 0);
   const totalCount = initialResponse.results.count;
   let resultsProcessed = 0;
-  const projects = initialResponse.filterCategories[0].filters.map((filter) => filter.id);
-  const projectResults = initialResponse.filterCategories[0].filters.map((filter) => filter.resultCount);
+  const projects = initialResponse.filterCategories[0].filters.map(
+    (filter) => filter.id
+  );
+  const projectResults = initialResponse.filterCategories[0].filters.map(
+    (filter) => filter.resultCount
+  );
   const appsUsing = [];
   for (let i = 0; i < projects.length; i++) {
     const projectName = projects[i];
     const initialProjectResponse = await search(packageName, 0, projectName);
-    const repositories = initialProjectResponse.filterCategories[1].filters.map((filter) => filter.id);
-    const repositoriesResults = initialProjectResponse.filterCategories[1].filters.map((filter) => filter.resultCount);
+    const repositories = initialProjectResponse.filterCategories[1].filters.map(
+      (filter) => filter.id
+    );
+    const repositoriesResults =
+      initialProjectResponse.filterCategories[1].filters.map(
+        (filter) => filter.resultCount
+      );
     for (let j = 0; j < repositories.length; j++) {
       const repositoryName = repositories[j];
       let skip = 0;
       while (skip < repositoriesResults[j]) {
-        const response = await search(packageName, skip, projectName, repositoryName);
+        const response = await search(
+          packageName,
+          skip,
+          projectName,
+          repositoryName
+        );
         appsUsing.push(
           ...response.results.values
             .filter((val) => {
@@ -81,11 +98,17 @@ const getUsageForPackage = async (packageName) => {
         );
         skip = response.results.values.length + skip;
         resultsProcessed += response.results.values.length;
-        process.stdout.write(`\r${packageName}: ${resultsProcessed} out of ${totalCount} files scanned.`);
+        process.stdout.write(
+          `\r${packageName}: ${resultsProcessed} out of ${totalCount} files scanned.`
+        );
       }
     }
   }
   process.stdout.write(`\n`);
+  fs.appendFileSync(
+    `./packageusage-${packageName}-all.csv`,
+    `${today}, ${packageName}, ${appsUsing.length} \n`
+  );
   return new Set(appsUsing);
 };
 
@@ -93,7 +116,10 @@ const main = async () => {
   try {
     console.log(packageName, await getUsageForPackage(packageName));
   } catch (error) {
-    console.error("Something went wrong. It might be that your token expired.", error);
+    console.error(
+      "Something went wrong. It might be that your token expired.",
+      error
+    );
   }
 };
 
