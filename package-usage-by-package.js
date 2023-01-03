@@ -115,7 +115,7 @@ const search = async (packageName, skip, projectName, repositoryName) => {
 };
 
 const processData = (data) => {
-  fs.writeFileSync(`./packageusage-repos-all.csv`, "repo name \n");
+  // fs.writeFileSync(`./packageusage-repos-all.csv`, "repo name \n");
   packages.forEach((pkg) => {
     process.stdout.write(`\r Processing ${pkg} versions count \n`);
     const versionUsage = {};
@@ -124,33 +124,35 @@ const processData = (data) => {
     data
       .filter((item) => item.package === pkg)
       .map((item) => {
+        const newVersion = item.version ? item.version.replace('^','').replace('~',''): item.version;
+        console.log(newVersion);
         if (
-          item.version !== undefined &&
+          newVersion !== undefined &&
           packageCount.indexOf(item.name) === -1
         ) {
           packageCount.push(item.name);
-          if (versionUsage[item.version]) {
-            versionUsage[item.version]++;
+          if (versionUsage[newVersion]) {
+            versionUsage[newVersion]++;
           } else {
-            versionUsage[item.version] = 1;
+            versionUsage[newVersion] = 1;
           }
         }
       });
 
-    console.log(packageCount);
-    // for (const [key, value] of Object.entries(versionUsage)) {
-    //   fs.appendFileSync(
-    //     `./packageusage-${pkg.split("/")[1]}-all.csv`,
-    //     `${today}, ${pkg}, ${key}, ${value} \n`
-    //   );
-    // }
-    // fs.appendFileSync(
-    //   `./packageusage-all.csv`,
-    //   `${today}, ${pkg}, ${packageCount.length} \n`
-    // );
-    packageCount.forEach((item) =>
-      fs.appendFileSync(`./packageusage-repos-all.csv`, `${item} \n`)
+    // console.log(packageCount);
+    for (const [key, value] of Object.entries(versionUsage)) {
+      fs.appendFileSync(
+        `./packageusage-${pkg.split("/")[1]}-all.csv`,
+        `${today}, ${pkg}, ${key}, ${value} \n`
+      );
+    }
+    fs.appendFileSync(
+      `./packageusage-all.csv`,
+      `${today}, ${pkg}, ${packageCount.length} \n`
     );
+    // packageCount.forEach((item) =>
+    //   fs.appendFileSync(`./packageusage-repos-all.csv`, `${item} \n`)
+    // );
   });
 };
 
@@ -223,10 +225,10 @@ const getUsageForPackage = async (packageName) => {
 
   var unique = appsUsing.filter(onlyUnique);
   console.log(unique);
-  // fs.writeFileSync(
-  //   `./packageusage-${packageName}-${today}-raw.json`,
-  //   `${JSON.stringify(appsUsing)} \n`
-  // );
+  fs.writeFileSync(
+    `./packageusage-${packageName}-${today}-raw.json`,
+    `${JSON.stringify(appsUsing)} \n`
+  );
 
   // fs.writeFileSync(`./packageusage-all.csv`, "date, package, version, count \n");
   processData(appsUsing);
