@@ -11,26 +11,6 @@ const API_URL = `https://almsearch.dev.azure.com/${companyName}/_apis/search/cod
 
 const today = new Date().toJSON().slice(0, 10);
 
-// const search = async (packageName, skip, projectName) => {
-//   const response = await fetch(API_URL, {
-//     method: "POST",
-//     body: JSON.stringify({
-//       searchText: packageName,
-//       skipResults: skip,
-//       takeResults: 200,
-//       filters: [],
-//       searchFilters: projectName ? { ProjectFilters: [projectName] } : {},
-//       sortOptions: [],
-//       summarizedHitCountsNeeded: true,
-//       includeSuggestions: false,
-//       isInstantSearch: false,
-//     }),
-//     headers: { Authorization: token, "Content-Type": "application/json" },
-//   });
-//   const responseJson = await response.json();
-//   return responseJson;
-// };
-
 const search = async (packageName, skip, projectName, repositoryName) => {
   const filter = {};
   if (projectName) {
@@ -109,6 +89,11 @@ const getUsageForPackage = async (packageName) => {
     `./packageusage-${packageName}-all.csv`,
     `${today}, ${packageName}, ${appsUsing.length} \n`
   );
+
+  var file = fs.createWriteStream('appsusing.txt');
+  file.on('error', function(err) { /* error handling */ });
+  appsUsing.forEach((v) => { file.write(v.join(', ') + '\n'); });
+  file.end();
   return new Set(appsUsing);
 };
 

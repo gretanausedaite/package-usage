@@ -9,9 +9,39 @@ const token = `Basic ${Buffer.from(`:${azureToken}`).toString("base64")}`;
 
 const API_URL = `https://almsearch.dev.azure.com/${companyName}/_apis/search/codeQueryResults?api-version=6.0-preview.1`;
 
+// const search = async (packageName, skip, projectName) => {
+//   const response = await fetch(API_URL, {
+//     method: "POST",
+//     body: JSON.stringify({
+//       searchText: packageName,
+//       skipResults: skip,
+//       takeResults: 200,
+//       filters: [],
+//       searchFilters: projectName ? { ProjectFilters: [projectName] } : {},
+//       sortOptions: [],
+//       summarizedHitCountsNeeded: true,
+//       includeSuggestions: false,
+//       isInstantSearch: false,
+//     }),
+//     headers: { Authorization: token, "Content-Type": "application/json" },
+//   });
+//   const responseJson = await response.json();
+//   return responseJson;
+// };
+
 function onlyUnique(value, index, self) {
   return self.indexOf(value) === index;
 }
+
+const packages = [
+  "@itwin/itwinui-css",
+  "@itwin/itwinui-react",
+  "@itwin/itwinui-layouts-css",
+  "@itwin/itwinui-layouts-react",
+  "@itwin/itwinui-variables",
+  "@itwin/itwinui-icons-react",
+  "@itwin/itwinui-illustrations-react",
+];
 
 const today = new Date().toJSON().slice(0, 10);
 
@@ -31,6 +61,23 @@ const getFileContent = async (file) => {
       }
     );
     return await response.text();
+  } catch (err) {
+    console.log(err);
+  }
+};
+
+const findPackageVersion = async (file, packageName) => {
+  try {
+    const content = await getFileContent(file);
+    const obj = JSON.parse(content);
+    var version;
+    if (obj.dependencies && obj.dependencies[packageName]) {
+      version = obj.dependencies[packageName];
+      return version;
+    } else if (obj.devDependencies && obj.devDependencies[packageName]) {
+      version = obj.devDependencies[packageName];
+      return version;
+    }
   } catch (err) {
     console.log(err);
   }
@@ -65,6 +112,48 @@ const search = async (packageName, skip, projectName, repositoryName) => {
   } catch (err) {
     console.log(err);
   }
+};
+
+const processData = (data) => {
+  // fs.writeFileSync(`./packageusage-repos-all.csv`, "repo name \n");
+  packages.forEach((pkg) => {
+    process.stdout.write(`\r Processing ${pkg} versions count \n`);
+    const versionUsage = {};
+    var packageCount = [];
+    console.log(packageCount.length);
+    data
+      .filter((item) => item.package === pkg)
+      .map((item) => {
+        const newVersion = item.version ? item.version.replace('^','').replace('~',''): item.version;
+        console.log(newVersion);
+        if (
+          newVersion !== undefined &&
+          packageCount.indexOf(item.name) === -1
+        ) {
+          packageCount.push(item.name);
+          if (versionUsage[newVersion]) {
+            versionUsage[newVersion]++;
+          } else {
+            versionUsage[newVersion] = 1;
+          }
+        }
+      });
+
+    // console.log(packageCount);
+    for (const [key, value] of Object.entries(versionUsage)) {
+      fs.appendFileSync(
+        `./packageusage-${pkg.split("/")[1]}-all.csv`,
+        `${today}, ${pkg}, ${key}, ${value} \n`
+      );
+    }
+    fs.appendFileSync(
+      `./packageusage-all.csv`,
+      `${today}, ${pkg}, ${packageCount.length} \n`
+    );
+    // packageCount.forEach((item) =>
+    //   fs.appendFileSync(`./packageusage-repos-all.csv`, `${item} \n`)
+    // );
+  });
 };
 
 const getUsageForPackage = async (packageName) => {
@@ -107,7 +196,17 @@ const getUsageForPackage = async (packageName) => {
               return val.fileName === "package.json";
             })
             .map(async (val) => {
-              return appsUsing.push(val.repository);
+              // return appsUsing.push(val.repository);
+              packages.map(async (pkg) => {
+                await findPackageVersion(val, pkg).then((version) => {
+                  appsUsing.push({
+                    date: today,
+                    name: val.repository,
+                    version: version,
+                    package: pkg,
+                  });
+                });
+              });
             });
 
           skip = response.results.values.length + skip;
@@ -122,16 +221,18 @@ const getUsageForPackage = async (packageName) => {
     }
   }
   process.stdout.write(`\n`);
+  // console.log(appsUsing);
 
   var unique = appsUsing.filter(onlyUnique);
   console.log(unique);
-  fs.appendFileSync(
-    `./packageusage-${packageName}-raw.json`,
-    `${today}, ${packageName}, ${unique.length} \n`
+  fs.writeFileSync(
+    `./packageusage-${packageName}-${today}-raw.json`,
+    `${JSON.stringify(appsUsing)} \n`
   );
+
+  // fs.writeFileSync(`./packageusage-all.csv`, "date, package, version, count \n");
+  processData(appsUsing);
 };
-
-
 
 const main = async () => {
   try {

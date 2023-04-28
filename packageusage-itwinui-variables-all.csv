@@ -1,3 +1,8 @@
 date, package, version, count 
-2022-12-05, @itwin/itwinui-variables, ~1.0.0, 1 
-2023-01-03, @itwin/itwinui-variables, 1.0.0, 3 
+2022-12-05, @itwin/itwinui-variables, 1.x, 1 
+2023-01-31, @itwin/itwinui-variables, 1.x, 4 
+2023-03-06, @itwin/itwinui-variables, 1.0.0, 5 
+2023-03-06, itwinui-variables, 14 
+2023-03-31, @itwin/itwinui-variables, 1.0.0, 7 
+2023-04-28, @itwin/itwinui-variables, 2.0.0, 1 
+2023-04-28, @itwin/itwinui-variables, 1.0.0, 7 
